@@ -1,0 +1,40 @@
+rules_version = '2';
+
+// Erişim modeli: ev kodu (10 karakter, tahmin edilemez) bilen ve uygulamaya giriş yapmış
+// herkes o eve okuyup yazabilir. Evlerin listesi hiç kimseye verilmez.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /houses/{houseId} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create: if request.auth != null
+        && houseId.size() >= 10
+        && validHouse(request.resource.data);
+      allow update: if request.auth != null && validHouse(request.resource.data);
+      allow delete: if false;
+
+      match /tx/{txId} {
+        allow read: if request.auth != null;
+        allow create, update: if request.auth != null
+          && exists(/databases/$(database)/documents/houses/$(houseId))
+          && validTx(request.resource.data);
+        allow delete: if request.auth != null;
+      }
+    }
+
+    function validHouse(d) {
+      return d.name is string && d.name.size() > 0 && d.name.size() <= 40
+        && d.members is list && d.members.size() <= 30;
+    }
+
+    function validTx(d) {
+      return d.type in ['expense', 'payment']
+        && d.amount is int && d.amount > 0 && d.amount < 100000000000
+        && d.payer is string
+        && d.shares is map && d.shares.size() > 0 && d.shares.size() <= 30
+        && d.date is string && d.date.size() == 10
+        && d.desc is string && d.desc.size() <= 60;
+    }
+  }
+}
